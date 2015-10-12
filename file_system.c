@@ -5,8 +5,6 @@
 #include "file_system.h"
 
 
-
-
 /********************************************************
  *	initFakeFS
  *
@@ -44,13 +42,13 @@ void initFakeFS( void )
 	// 2009
 	strncpy( dirs[3].name, "2009", MAX_NAME_SIZE );
 	dirs[3].num_files = 0;
-	dirs[3].num_children = 2;
+	dirs[3].num_children = 0;
 	dirs[3].id = 3;
 
 	// 2010
 	strncpy( dirs[4].name, "2010", MAX_NAME_SIZE );
 	dirs[4].num_files = 0;
-	dirs[4].num_children = 2;
+	dirs[4].num_children = 0;
 	dirs[4].id = 4;
 
 	// 2011
@@ -62,7 +60,7 @@ void initFakeFS( void )
 	// Resume
 	strncpy( dirs[6].name, "resume", MAX_NAME_SIZE );
 	dirs[6].num_files = 0;
-	dirs[6].num_children = 2;
+	dirs[6].num_children = 0;
 	dirs[6].id = 6;
 
 	// work
@@ -254,7 +252,7 @@ inline uint32_t get_num_files( uint32_t id )
  * representing the files within that directory. 
  * (Don't forget to free the memory)
  ********************************************************/
-struct FS_Direcory* get_children( uint32_t id )
+struct FS_Directory* get_children( uint32_t id )
 {
 	uint32_t num_children, dir_offset;
 	struct FS_Directory *children;
@@ -331,30 +329,123 @@ void print_dir( uint32_t id )
 
 
 
-
+/********************************************************
+ *	add_dir
+ *
+ * Takes the a directory's ID and adds a child directory
+ * by copying the entire original directory buffer to a 
+ * new buffer with a gap at the beginning of the parent's
+ * child space, and then builds the new directory in that
+ * gap. The original buffer is freed and replaced with 
+ * the new buffer.
+ ********************************************************/
 void add_dir( uint32_t parent_id, uint8_t* name )
 {
-	uint32_t first_offset, second_offset;
-	first_offset = get_dir_offset( parent_id );
-	second_offset = first_offset + sizeof( struct FS_Directory );	
+	int struct_size, dir_offset, dirs_buffer_len, first_half_len, scnd_half_len; 
 
-	struct FS_Directory* new_dirs = malloc( header.num_dir * sizeof( struct FS_Directory ) );
-	if ( new_dirs == NULL ) return;
+	struct_size = sizeof( struct FS_Directory );
+	dirs_buffer_len = struct_size * header.num_dir;	// Original dir buffer size
+	dir_offset = get_dir_offset( parent_id );
 
-	memcpy( new_dirs, dirs, first_offset * sizeof( struct FS_Directory ) ); // Copy first half of buffer
-	memcpy( &new_dirs[second_offset], &dirs[first_offset], head.num_dir - second_offset; // Copy second half, leaving gap for new directory
+	// Buffer size split into halves, where the split is where the new dir is to go
+	first_half_len = dir_offset * struct_size ;
+	scnd_half_len = dirs_buffer_len - first_half_len;
+	
+	// Allocate space for one exact copy + 1 additional dir
+	struct FS_Directory *new_dirs = malloc( dirs_buffer_len + struct_size * 2 ); 
+	// WHY DO WE NEED SPACE FOR 2 STRUCT SIZES?????????????????????????????????????????????????????????????????
 
-	// Build new directory
-	//struct FS_Directory = { name, 0, 0, NEED NEXT ID HERE
-	//new_dirs[first_offset] 
 
+	// Copy first half of buffer, then second half leaving space for new dir
+	memcpy( new_dirs, dirs, first_half_len );
+	memcpy( new_dirs + dir_offset + 1, dirs + dir_offset, scnd_half_len + struct_size );
+
+	// Build new dir
+	strncpy( new_dirs[dir_offset].name, name, MAX_NAME_SIZE );
+	new_dirs[dir_offset].num_files = 0;
+	new_dirs[dir_offset].num_children = 0;
+	new_dirs[dir_offset].id = next_id();
+
+	// Update header and parent
+	header.num_dir++;
+	new_dirs[get_index( parent_id )].num_children++;	
+
+	// Free old dirs buffer with new updated one
+	free( dirs );
+	dirs = new_dirs;	
+}
+
+
+// THIS NEEDS TO BE COMPLETELY REDONE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+int rem_dir_leaf( uint32_t id )
+{
+	printf("Deleteing leaf id: %d\n", id );
+	int dir_offset, len_after_dir;
+
+	// If dir does not exist
+	if ( !( dir_offset = get_dir_offset( id ) ) ) return ERROR;
+
+	// Update header and parent
+	header.num_dir--;
+	dirs[get_index( get_parent( id ) )].num_children--;
+
+	len_after_dir = ( header.num_dir - dir_offset - 1 ) * sizeof( struct FS_Directory );
+
+	// Collapse directory buffer on deleted space
+	memcpy( dirs + dir_offset, dirs + dir_offset + 1, len_after_dir );
+
+	return id;
+}
+
+int rem_dir( uint32_t id )
+{
+	printf("Called rem_dir( id: %d )\n", id );	
+	int i, children;
+	struct FS_Directory* dir_list;
+
+	children = get_num_children( id );
+
+	// If there are no more children, delete directory
+	if ( children == 0 )
+	{
+		printf("No children in id: %d\n", id );		
+		rem_dir_leaf( id );
+		return id;
+	}
+
+	// Call function recursively over all the child dirs
+	dir_list = get_children( id );
+	for ( i = 0; i < children; i++ ) 
+		rem_dir( dir_list[i].id );
+	free( dir_list );
+
+	// Upon return, all children are deleted, now delete this
+	printf("Returned for id: %d, and removing this\n", id );
+	rem_dir_leaf( id );
+
+// TODO handle errors
 	
 }
 
+/********************************************************
+ *	next_id
+ *
+ * Gets and increments the next available id from the 
+ * header.
+ ********************************************************/
 uint32_t next_id( void )
 {
 	uint32_t new_id;
 
-	new_id = header.next_id; // FINISH THIS CRAP
+	new_id = header.next_id;
+	header.next_id++;
+	// TODO make this to store next id update_header();
+	
+	return new_id;
+	
 }
+
+//TODO make function to collapse physical file size if dirs are removed, or just write a clean file with every update
+
+// TODO make function than can retrieve an id by name (obviously restricted to within the current directory)
 

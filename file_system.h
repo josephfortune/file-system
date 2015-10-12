@@ -29,16 +29,31 @@ struct FS_File *files;
 
 // =======================================================
 
+
+// File System Wide
 void initFakeFS( void );
+uint32_t get_total_num_files( void );
+
+// Directories
 uint32_t get_index( uint32_t id );
 uint32_t get_parent( uint32_t id );
 uint32_t get_dir_offset( uint32_t id );
-uint32_t get_total_num_files( void );
-uint32_t get_file_offset( uint32_t id );
 inline uint32_t get_num_children( uint32_t id );
+struct FS_Directory* get_children( uint32_t id );
 inline uint32_t get_num_files( uint32_t id );
-struct FS_Direcory* get_children( uint32_t id );
 struct FS_File* get_files( uint32_t id );
-void print_dir( uint32_t id );
 void add_dir( uint32_t parent_id, uint8_t* name );
+int rem_dir_leaf( uint32_t parent_id );
+int rem_dir( uint32_t parent_id );
+void print_dir( uint32_t id );
 uint32_t next_id( void );
+
+// Files
+uint32_t get_file_offset( uint32_t id );
+
+
+
+
+
+
+
